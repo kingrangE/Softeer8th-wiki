@@ -8,7 +8,11 @@
 ## 학습 내용 정리
 
 1. [7월 1일](#7월-1일)
+    - pandas
+    - matplotlib
 2. [7월 2일](#7월-2일)
+    - [데이터 모델링](#da-수업)
+    - [SQL](#sql-정리)
 3. [7월 3일](#7월-3일)
 
 ### 7월 1일
@@ -443,3 +447,282 @@ DA 평가일은 7월 22일이라 시간이 별로 없는데, DB를 잘 모르기
     - 첸 표기법
         - 정리 필요
 #### SQL 정리
+- python sqlite 사용법
+    1. DB 연결
+        ```python
+        import sqlite3
+        conn = sqlite3.connect('DB명')
+        ```
+    2. 조작을 위한 cursor 가져오기
+        ```python
+        cursor = conn.cursor()
+        ```
+    3. 쿼리 실행
+        ```python
+        cursor.execute("쿼리")
+        ```
+        - 쿼리 실행만으로 결과가 나오는 것은 아니다.
+            - fetch를 해야 결과를 받을 수 있다.
+        - DDL 같은 경우에는 commit을 따로 실행해야 반영된다. 
+            - execute는 트랜잭션에만 반영된 상태
+            - commit 없이 close하면 ROLLBACK된다.
+    4. 자동 커밋 실행
+        ```python
+        sqlite3.connect("DB명",isolation_level=None)
+        ```
+        - 위와같이 연결하면 `autocommit모드`가 된다.
+        - 3.12부터는 `autocommit=True` 파라미터를 이용하는 것을 권장한다.
+        - `with 문` 안에서 사용하면 `블록 내`에서 `autocommit`이다.
+    5. SELECT 쿼리 결과 가져오기
+        ```python
+        cursor.fetchone() # 결과에서 한 행만
+        cursor.fetchall() # 남은 모든 행을 리스트로
+        cursor.fetchmany(size) # 지정한 개수만큼만
+        ```
+        - execute를 실행해도 결과가 바로 반환되지 않는다.
+            - `execute로는 쿼리를 실행`하여 `cursor를 결과 집합에 위치`시키는 것이고, `데이터를 꺼내오는 것은 fetch`
+        - fetch는 consuming 동작이기에 이미 읽은 것은 다시 못 읽는다.
+        - fetchall은 모든 결과를 한 번에 메모리에 올리므로, 메모리 문제가 발생할 수 있다.
+- 주요 SQL Command
+    - 굉장히 많은 것을 정리했다. 굳이 이걸 하나하나 다시 여기에 적는 것이 불필요할 것 같아 패스한다.
+    - [정리에 이용한 문서(w3schools)](https://www.w3schools.com/sql/sql_intro.asp)
+
+### 7월 3일
+1주차의 마지막 날이다. 수업이 따로 없었고, 1주차 미션을 진행하고, 그룹 스쿼드로 다른 조와 의견을 나누는 자리가 있었다.
+
+뭔가 시간적으로 여유가 생기고, ETL 구현 미션 난이도 자체가 크게 어렵지 않아 직접 하고싶다는 생각이 들어 오랜만에 직접 개발을 진행했었다.
+
+특별히 이 날 뭔가 공부를 한 것보다는 개발 위주로 진행해서 사용법 정도랑 ETL에 대해 정리해보고자 한다.
+
+#### ETL
+- 여러 소스에 흩어진 데이터를 추출하고, 분석 가능한 형태로 변환한 뒤, 저장소에 적재하는 데이터 통합 프로세스를 말한다.
+
+- 단계별 구성
+    1. Extract
+        - Source로부터 데이터를 가져오는 단계
+            - Source : RDBMS, NoSQL, API, Log, MQ, ...
+        - 추출
+            - 전체 추출(Full Extraction)
+                - 파이프라인 실행때마다 모든 데이터를 통째로 가져오는 방법
+                - 장점
+                    - 구현 단순 / 마지막 실행 시점 추적 필요 없음
+                    - 정합성 문제가 생기기 어려움
+                    - 실패해도 다시 실행하면 되기에 복구 쉬움
+                - 단점
+                    - DB 부하가 선형적 증가
+                    - 네트워크 전송량, 저장 비용도 커짐
+                - 적합한 경우
+                    - 수십만건 이하의 작은 테이블
+                    - 코드/마스터성 테이블
+                    - 변경 추적이 불가능한 소스
+            - 증분 추출(Incremental Extraction, CDC포함) 
+                - DB 부하를 줄이기 위해 증분 추출이 일반적이다.
+                - `CDC란?`
+                    - Change Data Capture : 변경 데이터 캡처
+                    - 원천 DB에서 변경된 부분만 감지해서 추출하는 기법
+                        - 매번 전체 테이블 복사는 데이터가 커질수록 원천DB에 부하가 크고, 시간이 오래걸린다. CDC는 **지난 실행 이후 바뀐 것만** 가져오므로 **훨씬 효율적**
+                    - 주요 구현 방식
+                        1. 로그 기반 CDC 
+                            - 가장 권장, DB의 트랜잭션 로그를 읽어 변경 사항 추출
+                            - 쿼리를 날리지 않기에 운영 DB 부하가 거의 없고 DELETE까지 정확히 capture
+                            - 대표 도구 : Debezium
+                        2. 쿼리 기반 CDC
+                            - updated_at같은 컬럼을 기준으로 변경분 조회
+                            - 구현이 간단하다는 장점
+                            - 물리적으로 삭제된 행은 감지할 수 없고 컬럼이 항상 갱신된다는 보장이 필요하다는 단점
+                        3. 트리거 기반 CDC
+                            - 테이블에 트리거를 걸어 변경시 변경 이력 테이블에 기록하도록 함
+                            - 2에서 잡지못하는 DELETE도 capture하지만, DB에 쓰기 부하가 추가되기에 잘 쓰지 않음
+                    - Extract에서 CDC를 사용하면, 준실시간 데이터 동기화가 가능해진다.
+                        - Debezium -> Kafka -> DW
+                - 크롤링하는 경우에는 CDC가 불가능하지만, 증분 처리 개념을 비슷하게 적용할 수는 있다.
+                    1. 전체 스크랩 + 스냅샷 비교 (diff) : 매번 전체를 긁어오고, 이전 실행 결과와 비교하여 변경분만 찾기
+                        - 추출은 Full이지만, 증분 방식
+                    2. 페이지가 제공하는 단서 활용 : 지난 번 본 마지막 ID 이후 수집
+                        - 게시글 ID, 게시 날짜, 최신순 정렬 페이지 등을 워터마크처럼 사용해 수집
+                        - 게시판, 뉴스 크롤링에서 흔한 패턴
+                    3. 콘텐츠 해시 기반 dedup : 각 항목의 해시, 고유 키 등을 저장하고 수집한 것은 건너뜀
+                    4. HTTP 캐시 헤더 : Last Modified나 ETag가 제공되는 경우 이를 이용 (거의 어려움)
+
+    2. Tranform 
+        - 추출한 raw data를 가공하는 단계
+        - 가장 복잡하고 비용이 크다.
+        - 주요 작업
+            1. 데이터 **정제**
+            2. 스키마 **매핑** 및 **타입 변환**
+            3. **조인, 집계, 파생 컬럼 생성**
+            4. 개인정보 마스킹, 암호화 등 **규제 대응**
+            5. 데이터 **품질 검증**
+    3. Load
+        - 변환된 데이터를 데이터 웨어하우스나 데이터 마트에 저장하는 단계
+        - 적재
+            - 전체 재적재 (Full Load)
+            - 증분 적재 (Incremental/Upsert)
+        - 멱등성을 보장하는 설계가 중요하다.
+            - 멱등성이란?
+                - 같은 작업을 **한 번 실행하든 여러 번 실행하든 최종 결과가 동일**한 성질
+            - 중요 이유
+                - 파이프라인은 현실적으로 실패할 위험을 내재하고, 재실행될 수 있다.
+                    - ex, 네트워크 오류, 원천 DB 타임아웃, 인프라 장애, 코드 배포 등
+                - 이때, 멱등성이 없으면 중복 적재가 되어 계산 결과가 잘못 나오는 데이터 오염이 발생할 수 있다.
+            - 구현 패턴
+                1. overwrite : 날짜 등 파티션 단위로 지우고 다시 작성
+                    - 가장 흔한 패턴
+                    - Airflow에서 특정 날짜의 backfill을 안전하게 할 수 있는 이유기도 하다.
+                2. MERGE/UPSERT 
+                    -  CDC 기반 증분 적재에서 표준적으로 사용된다.
+                3. 고유키 + 중복 제거 : 이벤트에 고유 ID 부여 후, 이미 처리한 ID 패스
+                    - 스트리밍에서 흔한 패턴
+                4. INSERT 대신 상태 선언 : 데이터 추가가 아닌, 최종 상태가 이렇게 되어야 한다는 방식의 로직 설계
+- ETL / ELT
+    - 최근에는 ELT가 주류가 되어가고 있다. 둘의 차이는 아래와 같다.
+        1. ETL 
+            - 변환 위치 : 별도 처리 서버 / 엔진
+            - 적재 데이터 : 정제된 데이터
+            - 강점 : 적재 전 데이터 마스킹 / 온프레미스 환경
+            - 대표 도구 : Informatica, Talend, SSIS
+        2. ELT
+            - 변환 위치 : 데이터 웨어하우스 내부
+            - 적재 데이터 : 원시 데이터 그대로
+            - 강점 : 클라우드 DW의 연산력 활용, 유연성, 원시 데이터 보존
+            - 대표 도구 : Fivetran, Airbyte (적재) / dbt (변환)
+    - ELT가 주류가 된 이유
+        - 클라우드 DW의 연산,저장 비용이 저렴해지며 **일단 다 적재하고 필요할 때 변환한다**는 개념의 ELT가 유리해진 것
+        - BUT, 적재전 마스킹 같은 것이 필요한 경우 ETL이 여전히 적합하다.
+- 파이프라인 설계 시 고려사항
+    1. **Orchestation** : **Airflow**, **Dagster**, **Prefect** 등으로 작업 의존성, 스케줄, 재시도를 관리
+    2. **멱등성**과 **재실행 가능성** : **같은 작업을 여러 번 실행**해도 **결과가 동일**해야 장애 복구가 안전
+    3. **증분 처리와 백필** : **신규 데이터만 처리**하되, **과거 데이터 재처리도 가능**해야 한다.
+    4. **데이터 품질 모니터링** : Great Expectation, dbt test같은 **검증 도구**와 **알림 체계**
+    5. **배치 vs 스트리밍** : **전통적 ETL**은 **배치 중심**이지만, 실시간 요구가 있으면 **Kafka + Flink/Spark Streaming** 같은 **스트리밍 파이프라인을 검토**하기도 한다.
+    6. **확장성과 비용** : 데이터 증가에 따른 **처리 시간**, **비용 추이**를 **미리 설계에 반영**해야 한다.
+- 대표적인 기술 스택
+    1. 추출 / 적재 : Fivetran, Airbyte, 자체 커넥터
+    2. 변환 : dbt, Spark, SQL
+    3. 오케스트레이션 : Airflow, Dagster
+    4. 저장소 : Snowflake, BigQuery, Redshift, Databricks(레이크 하우스)
+#### BeautifulSoup4 사용법 
+1. HTML 파일 추출 : request 라이브러리 이용
+    ```python
+    import request
+    # 403 차단을 막기 위해 UserAgent 헤더 추가 필요
+    response = request.get(url, headers={"User-Agent" :"Mozilla/5.0"})
+    html = response.text
+    ```
+2. soup 객체 생성
+    ```python
+    from bs4 import BeautifulSoup as bs
+    soup = bs(html,'html.parser')
+    ```
+3. 검색
+    - 첫 번째 매칭 요소 1개 반환
+        ```python
+        soup.find("div")
+        soup.find("td", class_="table") #class는 예약어라 class_가 파라미터명이다.
+        soup.find("a", id="destination")    
+        soup.find("a", attrs={"data-id":"123"}) # 임의 속성은 attrs dictionary로 검색
+        ```
+    - 매칭되는 모든 요소 리스트 반환
+        ```python
+        soup.find_all("li",limit = 5) #최대 개수 제한
+        soup.find_all(["hi1","hi2"]) #여러 태그 동시에
+        soup.find_all("a",href=True) #href 속성이 있는 것만
+        soup.find_all(string=re.compile("~~~"))# 텍스트 정규식 매칭으로 검색
+        ```
+4. css 선택자 방식
+    ```python
+    soup.select_one("div.title")          # 첫 번째 1개
+    soup.select("ul.list > li")           # 직계 자식
+    soup.select("#content .item a")       # 후손 탐색
+    soup.select("a[href^='https']")       # 속성값 시작 매칭
+    soup.select("tr:nth-of-type(2)")      # n번째 요소
+    ```
+5. 데이터 추출
+    ```python
+    tag = soup.select_one("a.link")
+
+    tag.text # 하위 모든 텍스트 
+    tag.get_text(strip=True)    # 앞뒤 공백 제거
+    tag.get_text(separator=" ") # 하위 텍스트들 사이 구분자 지정
+    tag["href"]                 # 속성값 (없으면 KeyError)
+    tag.get("href")             # 속성값 (없으면 None) 
+    tag.attrs                   # 모든 속성 딕셔너리
+    tag.name                    # 태그명
+    ```
+4. 트리 탐색 (요소 간 이동)
+    ```python
+    tag.parent            # 부모
+    tag.find_parent("div")# 조건에 맞는 조상
+    tag.children          # 직계 자식 (이터레이터)
+    tag.find_next_sibling("td")     # 다음 형제
+    tag.find_previous_sibling()     # 이전 형제
+    tag.find_next("a")    # 다음에 나오는 매칭 요소
+    ```
+#### datatime 사용법
+1. 기본 객체 생성
+    ```python
+    from datetime import datetime, date
+    now = datetime.now() # 현재 시각
+    today = date.today() # 오늘 날짜만
+    dt = datetime(Y,M,D,H,m,s) # 자기가 직접 생성
+    ```
+2. 속성
+    ```python
+    # 연 월 일 시 분 초
+    now.year, now.month, now.day, now.hour, now.minute, now.second 
+
+    now.weekday() # mon(0) ~ sun(6)
+    now.isoweekday() # mon(1) ~ sun(7)
+    now.date() #날짜만
+    now.time() #시간만
+    ```
+3. 시간 포매팅
+    ```python
+    # 문자열 -> datetime
+    dt = datetime.strptime("2026-07-06 14:30", "%Y-%m-%d %H:%M")
+    dt = datetime.strptime("2026.07.06", "%Y.%m.%d")
+
+    # datetime → 문자열 
+    dt.strftime("%Y-%m-%d")           # 2026-07-06
+    dt.strftime("%Y%m%d_%H%M%S")      # 20260706_143000
+
+    # ISO 형식은 전용 메서드 이용
+    dt.isoformat()                       
+    datetime.fromisoformat("2026-07-06T14:30:00")
+    ```
+4. 날짜/시간 연산
+    ```python
+    yesterday = now - timedelta(days=1)
+    next_week = now + timedelta(weeks=1)
+    deadline = now + timedelta(hours=3, minutes=30)
+
+    # 두 시각의 차이는 timedelta로 나온다.
+    diff = dt2 - dt1
+    diff.days             # 날짜 차이
+    diff.total_seconds()  # 전체 second 차이
+    ```
+#### json 조작
+1. json 기록
+    ```python
+    import json
+    with open("파일명.json","w") as f :
+        json.dump(data,f,indent=4)
+    ```
+2. json 읽기
+    ```python
+    import json
+    with open("파일명.json","r") as f :
+        data = json.load(f)
+    ```
+---
+- dataframe NA 처리
+    - -N/a 값을 모두 -1000으로 변경하기
+        ```python
+        # loc를 이용하여 한 번에 넣음
+        df.loc[df["column1"]=="value","column1"] = "value2"
+        ```
+        - column1 값이 value인 행의 column1에 -1000 넣기
+    - isna 이용도 가능
+        ```python
+        df.loc[df["column1"].isna(),"column1"] = "value2"
+        ```
