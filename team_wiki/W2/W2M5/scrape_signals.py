@@ -1,17 +1,3 @@
-"""seed_companies.csv 의 회사들에 대해 채용 공고를 웹 스크래핑으로 수집한다.
-
-소스별 어댑터:
-- greenhouse : Greenhouse 공개 임베드 HTML 보드.
-- greeting   : 그리팅(greetinghr) 채용 페이지 SSR HTML(ats_greeting).
-- html       : 위 플랫폼이 없는 회사의 자체 채용 페이지(scrape_html).
-
-파싱 결과는 data/raw/{token}.json, 원본 HTML 은 data/raw/html/{token}/ 에 캐시하며
-둘 다 있으면 다시 받지 않는다(--force 로 강제). 회사 단위 실패는 skip 후 로그만 남긴다.
-
-    python scrape_signals.py            # 캐시에 없는 회사만 수집
-    python scrape_signals.py --force    # 전부 새로 수집
-"""
-
 import collections
 import concurrent.futures as cf
 import csv

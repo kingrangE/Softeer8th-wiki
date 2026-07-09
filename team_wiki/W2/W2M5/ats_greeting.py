@@ -1,8 +1,3 @@
-"""그리팅(greetinghr) 채용 페이지 스크래핑.
-
-Next.js SSR의 __NEXT_DATA__ 안 React-Query 캐시를 파싱해 공고 목록/본문을 얻는다.
-반환 형식은 Greenhouse 어댑터와 동일하다.
-"""
 
 import concurrent.futures as cf
 import json

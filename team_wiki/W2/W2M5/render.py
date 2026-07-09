@@ -1,8 +1,8 @@
-"""radar.db(mentions)를 읽어 워드클라우드 뷰와 비교 막대를 그린다.
+"""radar.db(mentions)를 읽어 워드클라우드 뷰와 비교 막대를 그림.
 
 뷰1 마인드셰어, 뷰2 US vs KR, 뷰3 모멘텀 델타, 그리고 경쟁 기술 막대 등.
-토큰은 모두 영문 canonical 이라 한글 폰트가 필요 없다.
-뷰3의 분기는 '열린 공고의 게시 분기'라 완전한 시계열이 아니다(라벨 명시).
+토큰은 모두 영문 canonical 이라 한글 폰트 불필요.
+뷰3의 분기는 '열린 공고의 게시 분기'라 완전한 시계열 아님(라벨 명시).
 """
 
 import sqlite3
@@ -19,12 +19,12 @@ from analyze import crawl_summary
 CURRICULUM_QUARTERS = ("2025-Q4", "2026-Q1", "2026-Q2")
 _CMAP_BY_COUNTRY = {"KR": "Reds", "US": "Blues"}
 
-RECENCY_DECAY = 0.6        # 한 분기 오래되면 ×0.6
+RECENCY_DECAY = 0.6        # 한 분기 오래될수록 ×0.6
 LIFT_CAP = 4.0            # 직무 차별성(lift) 상한
 LIFT_MIN_SUPPORT = 2       # lift>1 부여 최소 회사 수
 WEIGHT_FULL = dict(recency=True, breadth=True, lift=True)
 
-# macOS 기본 한글 폰트 지정(워드클라우드 토큰은 영문)
+# macOS 기본 한글 폰트 지정(워드클라우드 토큰은 영문임)
 for _f in ("AppleGothic", "NanumGothic", "Apple SD Gothic Neo"):
     try:
         plt.rcParams["font.family"] = _f
@@ -46,7 +46,7 @@ def load_mentions(db=DB_PATH):
 
 
 def _drop_commodity(m):
-    """범용 커모디티 기술(Python/SQL/AWS/…)을 제외해 특화 도구를 부각."""
+    """범용 커모디티 기술(Python/SQL/AWS/…)을 제외해 특화 도구를 부각함."""
     return m[~m["tech"].isin(COMMODITY_TECH)]
 
 
@@ -67,7 +67,7 @@ def _cell_counts(sub, baseline, recency=True, breadth=True, lift=True, qw=None):
     """한 셀(sub)의 가중 tech 점수 {tech: score}.
 
     recency 는 최신 분기를 세게, breadth 는 회사당 1회로 집계, lift 는 baseline 대비
-    상대 빈도로 차별적 기술을 부각한다. baseline 은 lift 분모(예: 같은 국가 전체).
+    상대 빈도로 차별적 기술을 부각함. baseline 은 lift 분모(예: 같은 국가 전체).
     """
     df = sub.copy()
     if recency:
@@ -95,7 +95,7 @@ def _cell_counts(sub, baseline, recency=True, breadth=True, lift=True, qw=None):
             cshare = score[t] / ctot
             lv = cshare / (gshare.get(t, 1e-9) + 1e-9)
             if support.get(t, 0) < LIFT_MIN_SUPPORT:
-                lv = min(lv, 1.0)     # 희소 tech엔 lift>1 미부여
+                lv = min(lv, 1.0)     # 희소 tech엔 lift>1 미부여함
             score[t] *= min(lv, LIFT_CAP)
     return score
 
@@ -128,7 +128,7 @@ def view_us_vs_kr(m, path=None):
 
 
 def compute_momentum(m, q_early, q_late):
-    """두 분기의 share 차이. 반환 {tech: delta_share_permille}, 현재(late) share."""
+    """두 분기의 share 차이. {tech: delta_share_permille}와 현재(late) share 반환."""
     def share(q):
         c = m[m.quarter == q]["tech"].value_counts().to_dict()
         return _share(c)
@@ -149,7 +149,7 @@ def _momentum_color(delta):
 
 
 def pick_momentum_quarters(m, min_total=100, partial_ratio=0.5):
-    """모멘텀 비교용 최근 두 '성숙' 분기 선택. 진행중 부분 분기는 배제."""
+    """모멘텀 비교용 최근 두 '성숙' 분기 선택. 진행중 부분 분기는 배제함."""
     qc = _drop_commodity(m)["quarter"].value_counts()
     qs = sorted([q for q in qc.index if q and qc[q] >= min_total])
     if len(qs) >= 3 and qc[qs[-1]] < partial_ratio * qc[qs[-2]]:
@@ -207,7 +207,7 @@ def load_granular(db=DB_PATH):
 
 
 def view_granular_bar(g, top=18, path=None):
-    """세분 제품 top-N의 국가별 share-of-voice. US편중 위 / KR편중 아래로 정렬."""
+    """세분 제품 top-N의 국가별 share-of-voice. US편중 위 / KR편중 아래로 정렬함."""
     rows = []
     for country in ("US", "KR"):
         sh = _share(g[g.country == country]["product"].value_counts().to_dict())
@@ -265,7 +265,7 @@ def view_crawl_volume(summary_df, path=None):
 def category_techstack(m, include_commodity=True, top=None, weighted=False):
     """직무(category)별 기술 스택 {category: {tech: count|score}} 반환.
 
-    weighted=True 이면 recency·breadth·lift 가중 점수를 쓴다.
+    weighted=True 이면 recency·breadth·lift 가중 점수를 씀.
     """
     if not include_commodity:
         m = _drop_commodity(m)
@@ -294,7 +294,7 @@ def _cloud_grid(m, rows, row_col, countries, suptitle, path,
     fig, axes = plt.subplots(nrow, ncol, figsize=(6 * ncol, 3.2 * nrow), squeeze=False)
     out = {}
     for j, country in enumerate(countries):
-        base = m[m.country == country]                 # lift 분모 = 동일 국가 전체
+        base = m[m.country == country]                 # lift 분모 = 동일 국가 전체임
         for i, rv in enumerate(rows):
             ax = axes[i][j]
             sub = base[base[row_col] == rv]
@@ -302,7 +302,7 @@ def _cloud_grid(m, rows, row_col, countries, suptitle, path,
                 counts = _cell_counts(sub, base, qw=qw, **weight)
             else:
                 counts = sub["tech"].value_counts().to_dict()
-            n = len(sub)                               # 제목 n = raw 기술언급 수
+            n = len(sub)                               # 제목 n = raw 기술언급 수임
             out[(rv, country)] = counts
             ax.axis("off")
             if not counts:
@@ -336,7 +336,7 @@ def view_by_category(m, min_mentions=20, countries=("KR", "US"),
                      include_commodity=True, weighted=False, path=None):
     """직무(category)별 기술 스택 워드클라우드 (행=직무, 열=국가).
 
-    표본이 min_mentions 이상인 직무만 정의 순서대로 렌더한다.
+    표본이 min_mentions 이상인 직무만 정의 순서대로 렌더함.
     """
     vc = m["category"].value_counts()
     order = [c for c in all_job_categories() if c in vc.index]

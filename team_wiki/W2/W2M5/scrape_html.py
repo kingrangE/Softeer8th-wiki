@@ -1,6 +1,3 @@
-"""플랫폼 어댑터가 커버하지 못하는 회사의 자체 채용 페이지를
-requests + BeautifulSoup 로 직접 크롤링한다."""
-
 import concurrent.futures as cf
 import json
 import os
