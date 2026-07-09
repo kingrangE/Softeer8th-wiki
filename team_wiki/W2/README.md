@@ -322,9 +322,10 @@
 | | ATS 어댑터 (Greenhouse / Greeting / Ashby / 자체 페이지) | 회사마다 다른 채용 플랫폼을 하나의 공통 공고 형식으로 통일해 이후 단계를 단순화 |
 | | `ThreadPoolExecutor` | 공고 본문은 네트워크 대기가 대부분이라, 병렬 요청으로 수집 시간 단축 |
 | | JSON-LD / `__NEXT_DATA__` 파싱 | SPA 채용 페이지에서 구조화된 `JobPosting` 데이터를 안정적으로 추출 |
-| **Transform**<br>(전처리) | `BeautifulSoup.get_text` + `html.unescape` | HTML 태그·엔티티를 제거해 본문을 평문으로 정제 |
-| | 기술 어휘 화이트리스트 + 동의어 정규화 (`de_lexicon`) | 기술명은 고유명사라 형태소 분석이 불필요. 화이트리스트로 노이즈를 억제하고 `PySpark/Apache Spark → Spark`처럼 표기를 통일 |
-| | 공고당 기술 1회 집계 · 분기 버킷팅 | 한 공고 내 중복 언급으로 인한 왜곡을 막고, 게시일 기준으로 분기별 추이 분석이 가능하게 함 |
+| **Transform**<br>(전처리) | 1. 직무 필터 (`is_tech_role`) | 제목 키워드로 기술직만 골라 무거운 본문 분석 대상을 좁힘. 비기술직은 `jobs`에만 기록 |
+| | 2. HTML 평문화 (`html.unescape` + `BeautifulSoup.get_text`) | 엔티티 이스케이프된 Greenhouse 본문을 복원 후 태그를 벗겨 평문으로 정제 |
+| | 3. 기술명 추출 (정규식 매칭) | 기술명 사전 기반 화이트리스트 매칭. 단어 경계로 오탐 방지(`spark`≠`sparkling`), 긴 별칭 우선, `PySpark/Apache Spark → Spark` 표기 통일 (Claude로 사전 구성)|
+| | 4. 공고당 1회 집계 · 분기 버킷팅 | `set`으로 한 공고 내 중복 언급을 제거하고, 게시일을 `2025-Q4`로 변환해 분기별 추이 분석 |
 | **Load**<br>(적재) | `pandas` + `SQLite` | `jobs / mentions / granular` 3개 테이블로 정규화 |
 | **Render**<br>(시각화) | `wordcloud` + `matplotlib` | 결과 표현 |
 | | Custom Weight — `recency`·`breadth`·`lift` | 왜곡 보정: 최신 분기 강조(분기당 ×0.6 감쇠), 회사당 1회 집계, TF-IDF식 상대빈도(`lift`)로 특정 직무의 기술 부각 |
