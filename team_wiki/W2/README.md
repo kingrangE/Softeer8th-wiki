@@ -310,6 +310,25 @@
 - 직무별 테크 스택 워드 클라우드 (회사 공고 1회 집계 + 직무 종합에서 이 직무에 많이 나온 기술 가중치 + 최신 공고에 있는 기술에 가중치)
   ![2차 직무별](v2_position.png)
 
+---
+
+### 사용 기술
+
+> `Extract → Transform → Load → Render` ETL 파이프라인 구조로 구성
+
+| 단계 | 기술 | 무엇을 / 왜 |
+| --- | --- | --- |
+| **Extract**<br>(수집) | `requests` + `BeautifulSoup4` | ATS가 정적 HTML/JSON을 주기에, 무거운 브라우저 자동화(Selenium) 대신 가벼운 `requests`로 수집·파싱 |
+| | ATS 어댑터 (Greenhouse / Greeting / Ashby / 자체 페이지) | 회사마다 다른 채용 플랫폼을 하나의 공통 공고 형식으로 통일해 이후 단계를 단순화 |
+| | `ThreadPoolExecutor` | 공고 본문은 네트워크 대기가 대부분이라, 병렬 요청으로 수집 시간 단축 |
+| | JSON-LD / `__NEXT_DATA__` 파싱 | SPA 채용 페이지에서 구조화된 `JobPosting` 데이터를 안정적으로 추출 |
+| **Transform**<br>(전처리) | `BeautifulSoup.get_text` + `html.unescape` | HTML 태그·엔티티를 제거해 본문을 평문으로 정제 |
+| | 기술 어휘 화이트리스트 + 동의어 정규화 (`de_lexicon`) | 기술명은 고유명사라 형태소 분석이 불필요. 화이트리스트로 노이즈를 억제하고 `PySpark/Apache Spark → Spark`처럼 표기를 통일 |
+| | 공고당 기술 1회 집계 · 분기 버킷팅 | 한 공고 내 중복 언급으로 인한 왜곡을 막고, 게시일 기준으로 분기별 추이 분석이 가능하게 함 |
+| **Load**<br>(적재) | `pandas` + `SQLite` | `jobs / mentions / granular` 3개 테이블로 정규화 |
+| **Render**<br>(시각화) | `wordcloud` + `matplotlib` | 결과 표현 |
+| | Custom Weight — `recency`·`breadth`·`lift` | 왜곡 보정: 최신 분기 강조(분기당 ×0.6 감쇠), 회사당 1회 집계, TF-IDF식 상대빈도(`lift`)로 특정 직무의 기술 부각 |
+
 ----
 
 ## W2M6
