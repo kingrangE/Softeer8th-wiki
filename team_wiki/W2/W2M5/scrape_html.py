@@ -1,8 +1,5 @@
-"""
-scrape_html.py  —  개별 채용 페이지 웹 스크래핑 
-플랫폼 어댑터(Greenhouse 임베드 보드 / 그리팅)가 커버하지 못하는 회사의
-자체 채용 페이지를 requests + BeautifulSoup 로 직접 크롤링
-"""
+"""플랫폼 어댑터가 커버하지 못하는 회사의 자체 채용 페이지를
+requests + BeautifulSoup 로 직접 크롤링한다."""
 
 import concurrent.futures as cf
 import json
@@ -19,9 +16,9 @@ BROWSER_UA = {"User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                              "AppleWebKit/537.36 (KHTML, like Gecko) "
                              "Chrome/124.0.0.0 Safari/537.36")}
 TIMEOUT = 20
-SLEEP = 0.4            
-DETAIL_WORKERS = 3    
-FALLBACK_CAP = 30     
+SLEEP = 0.4
+DETAIL_WORKERS = 3
+FALLBACK_CAP = 30
 
 RETRYABLE = {403, 429, 500, 502, 503, 504}
 BACKOFF_BASE = 3.0
@@ -30,11 +27,8 @@ _LD_RE = re.compile(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script
 _ASHBY_POST_RE = re.compile(r'\{"id":"([0-9a-f-]{36})","title":"((?:[^"\\]|\\.)*)"')
 
 
-# ---------------------------------------------------------------- 공용 유틸
 def fetch_html(url, cache_path=None, force=False, retries=4):
-    """URL 을 GET 해 HTML 텍스트 반환. cache_path 있으면 멱등 캐시(있으면 재사용).
-    403/429/5xx 는 지수 백오프로 재시도(Greenhouse 임베드의 짧은 rate-limit 회복).
-    최종 실패는 예외를 올린다."""
+    """URL 을 GET 해 HTML 반환. cache_path 있으면 있으면 재사용. 403/429/5xx 는 지수 백오프 재시도."""
     if cache_path and os.path.exists(cache_path) and not force:
         with open(cache_path, encoding="utf-8") as f:
             return f.read()
@@ -60,8 +54,7 @@ def fetch_html(url, cache_path=None, force=False, retries=4):
 
 
 def balanced_json(text, marker):
-    """text 에서 marker(예: '"jobPosts":') 뒤의 균형 잡힌 {..} 객체를 dict 로 파싱.
-    문자열/이스케이프를 존중하는 중괄호 카운터. 못 찾거나 깨지면 None."""
+    """text 에서 marker 뒤의 균형 잡힌 {..} 객체를 dict 로 파싱. 못 찾거나 깨지면 None."""
     i = text.find(marker)
     if i < 0:
         return None
@@ -94,7 +87,7 @@ def balanced_json(text, marker):
 
 
 def jsonld_jobposting(html_text):
-    """페이지의 JSON-LD 블록들 중 @type=JobPosting 인 첫 dict 반환(없으면 None)."""
+    """페이지의 JSON-LD 중 @type=JobPosting 인 첫 dict 반환(없으면 None)."""
     for m in _LD_RE.finditer(html_text):
         try:
             data = json.loads(m.group(1))
@@ -107,7 +100,6 @@ def jsonld_jobposting(html_text):
 
 
 def _ld_location(ld):
-    """JobPosting.jobLocation → 간단한 지역 문자열(없으면 '')."""
     loc = ld.get("jobLocation")
     if isinstance(loc, list):
         loc = loc[0] if loc else None
@@ -116,21 +108,19 @@ def _ld_location(ld):
 
 
 def _looks_tech(title):
-    """폴백용 경량 기술직 판별(analyze.is_tech_role 지연 import)."""
     from analyze import is_tech_role
     return is_tech_role(title)
 
 
-# ------------------ Ashby 어댑터
 def _scrape_ashby(name, url, token, force):
-    """Ashby 보드 → 기술직 posting 별 JSON-LD JobPosting 을 긁어 job dict 리스트로."""
+    """Ashby 보드 → 기술직 posting 별 JSON-LD JobPosting 을 job dict 리스트로."""
     cache_dir = os.path.join(RAW_HTML_DIR, token)
     board = fetch_html(url, os.path.join(cache_dir, "board.html"), force)
 
     posts = []
     for pid, raw_title in _ASHBY_POST_RE.findall(board):
         try:
-            title = json.loads('"%s"' % raw_title)   # JSON 이스케이프 해제
+            title = json.loads('"%s"' % raw_title)
         except json.JSONDecodeError:
             title = raw_title
         posts.append((pid, title))
@@ -138,7 +128,7 @@ def _scrape_ashby(name, url, token, force):
     tech = [(pid, t) for pid, t in posts if _looks_tech(t)]
     capped = tech[:FALLBACK_CAP]
     if len(tech) > FALLBACK_CAP:
-        log_etl("STATS-Extract", "%s[html]: 기술직 %d건 중 상위 %d건만 상세 수집(폴백 상한)"
+        log_etl("STATS-Extract", "%s[html]: 기술직 %d건 중 상위 %d건만 상세 수집"
                 % (name, len(tech), FALLBACK_CAP))
     base = url.rstrip("/")
 
@@ -165,17 +155,13 @@ def _scrape_ashby(name, url, token, force):
     return jobs
 
 
-# --------------- 진입점
 def scrape_career_page(name, url, token, force=False):
-    """자체 채용 페이지에서 Greenhouse 호환 job dict 리스트를 반환.
-    실패(JS-SPA/봇차단/구조 불명)는 예외를 올려 상위에서 회사 단위 skip"""
+    """자체 채용 페이지에서 Greenhouse 호환 job dict 리스트를 반환. 실패 시 예외."""
     host = re.sub(r"^https?://([^/]+).*", r"\1", url)
 
-    # Ashby 보드
     if "ashbyhq.com" in host:
         return _scrape_ashby(name, url, token, force)
 
-    # 일반 사이트: 페이지 자체에 JSON-LD JobPosting 이 있으면 사용(단일 공고 페이지 등)
     cache_dir = os.path.join(RAW_HTML_DIR, token)
     html_text = fetch_html(url, os.path.join(cache_dir, "page.html"), force)
     ld = jsonld_jobposting(html_text)

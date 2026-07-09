@@ -1,25 +1,13 @@
-"""
-scrape_signals.py  —  [Extract]
-seed_companies.csv 의 회사들에 대해 채용 공고를 **웹 스크래핑**으로 수집한다.
+"""seed_companies.csv 의 회사들에 대해 채용 공고를 웹 스크래핑으로 수집한다.
 
-세 가지 소스 어댑터:
-- greenhouse : Greenhouse 공개 **임베드 HTML 보드**를 스크래핑.
-      목록  GET https://boards.greenhouse.io/embed/job_board?for={token}&page={n}
-            페이지 HTML 안에 임베드된 jobPosts 블록(id·title·location·published_at·부서)
-      본문  GET https://boards.greenhouse.io/embed/job_app?for={token}&token={jid}
-            HTML 의 div.job__description 을 BeautifulSoup 로 파싱
-  이 임베드 보드는 어느 사이트에나 삽입되도록 설계된 공개 HTML 이라 ToS-friendly 하고,
-  자체 도메인으로 리다이렉트해 job-boards 루트가 막힌 회사(coinbase·figma 등)도 커버한다.
-- greeting   : 그리팅(greetinghr) 채용 페이지의 SSR HTML(__NEXT_DATA__) 스크래핑(ats_greeting).
-- html       : 위 플랫폼이 없는 회사의 **자체 채용 페이지**를 직접 크롤링(scrape_html).
+소스별 어댑터:
+- greenhouse : Greenhouse 공개 임베드 HTML 보드.
+- greeting   : 그리팅(greetinghr) 채용 페이지 SSR HTML(ats_greeting).
+- html       : 위 플랫폼이 없는 회사의 자체 채용 페이지(scrape_html).
 
-특징:
-- 멱등적: 파싱 결과를 data/raw/{token}.json, 원본 HTML 을 data/raw/html/{token}/ 에 캐시.
-  둘 다 있으면 다시 받지 않는다(W1 build_w3schools_db.py 의 "없을 때만" 패턴). --force 로 강제.
-- 회사 단위 실패(구조 변경/네트워크/봇차단)는 skip + 로그 → 전체 파이프라인 중단 안 함.
-- 캐시가 있으면 오프라인에서도 후속 분석이 결정적으로 재현된다.
+파싱 결과는 data/raw/{token}.json, 원본 HTML 은 data/raw/html/{token}/ 에 캐시하며
+둘 다 있으면 다시 받지 않는다(--force 로 강제). 회사 단위 실패는 skip 후 로그만 남긴다.
 
-사용법:
     python scrape_signals.py            # 캐시에 없는 회사만 수집
     python scrape_signals.py --force    # 전부 새로 수집
 """
@@ -42,11 +30,10 @@ from radar_util import RAW_DIR, RAW_HTML_DIR, SEED_CSV, ensure_dirs, log_etl
 GH_BOARD = "https://boards.greenhouse.io/embed/job_board?for={token}&page={page}"
 GH_JOBAPP = "https://boards.greenhouse.io/embed/job_app?for={token}&token={jid}"
 SUPPORTED_ATS = ("greenhouse", "greeting", "html")
-GREENHOUSE_DETAIL_CAP = 40   # 회사당 본문 수집 상한(부하·예의; 초과분은 로그)
+GREENHOUSE_DETAIL_CAP = 40   # 회사당 본문 수집 상한
 
 
 def read_seed(path=SEED_CSV):
-    """seed_companies.csv 를 dict 리스트로 읽는다."""
     with open(path, newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
@@ -59,8 +46,7 @@ def _job_description(html_text):
 
 
 def scrape_greenhouse(token, force=False):
-    """Greenhouse 임베드 HTML 보드를 스크래핑해 공고 리스트(본문 포함)를 반환.
-    목록은 임베드된 jobPosts 블록에서, 본문은 기술직 제목만 job_app 페이지에서 긁는다."""
+    """Greenhouse 임베드 보드를 스크래핑해 공고 리스트를 반환. 본문은 기술직 제목만 수집."""
     cache_dir = os.path.join(RAW_HTML_DIR, token)
     metas, page, total_pages = [], 1, 1
     while page <= total_pages:
@@ -77,7 +63,7 @@ def scrape_greenhouse(token, force=False):
 
     tech = [j for j in metas if is_tech_role(j.get("title", ""))]
     if len(tech) > GREENHOUSE_DETAIL_CAP:
-        log_etl("STATS-Extract", "%s: 기술직 %d건 중 상위 %d건만 본문 수집(부하/예의 상한)"
+        log_etl("STATS-Extract", "%s: 기술직 %d건 중 상위 %d건만 본문 수집"
                 % (token, len(tech), GREENHOUSE_DETAIL_CAP))
         tech = tech[:GREENHOUSE_DETAIL_CAP]
 
@@ -87,7 +73,7 @@ def scrape_greenhouse(token, force=False):
             html_text = fetch_html(GH_JOBAPP.format(token=token, jid=jid),
                                    os.path.join(cache_dir, "job_%s.html" % jid), force)
             return _job_description(html_text)
-        except Exception:  # noqa: BLE001 - 개별 공고 실패는 빈 본문으로 관용
+        except Exception:  # noqa: BLE001
             return ""
 
     content_by_id = {}
@@ -102,7 +88,7 @@ def scrape_greenhouse(token, force=False):
         jobs.append({
             "id": jid,
             "title": (j.get("title") or "").strip(),
-            "content": content_by_id.get(jid, ""),        # 기술직만 본문 있음
+            "content": content_by_id.get(jid, ""),
             "first_published": j.get("published_at"),
             "location": {"name": j.get("location") or ""},
         })
@@ -110,8 +96,7 @@ def scrape_greenhouse(token, force=False):
 
 
 def fetch_jobs(company, force=False):
-    """seed 한 행(company dict)에 대해 ATS 별 어댑터로 공고 리스트를 받는다.
-    형식은 Greenhouse 호환(title, content, first_published, location)으로 통일."""
+    """company dict 에 대해 ATS 별 어댑터로 공고 리스트를 Greenhouse 호환 형식으로 반환."""
     ats, token = company["ats"], company["token"]
     if ats == "greenhouse":
         return scrape_greenhouse(token, force=force)
@@ -133,8 +118,8 @@ def extract(force=False):
     log_etl("START-Extract", "채용 공고 웹 스크래핑 시작. 대상 %d개사 (force=%s)" % (len(companies), force))
 
     ok_tokens, total_jobs = [], 0
-    by_country_jobs = collections.Counter()   # 국가별 수집 공고 수
-    by_country_cos = collections.Counter()    # 국가별 성공 회사 수
+    by_country_jobs = collections.Counter()
+    by_country_cos = collections.Counter()
     for c in companies:
         token, ats, country = c["token"], c["ats"], c.get("country", "??")
         if ats not in SUPPORTED_ATS:
@@ -152,7 +137,7 @@ def extract(force=False):
                 json.dump(jobs, open(path, "w", encoding="utf-8"), ensure_ascii=False)
                 n = len(jobs)
                 log_etl("OK-Extract", "%s[%s/%s]: %d건 스크래핑·캐시" % (c["name"], country, ats, n))
-            except Exception as e:  # noqa: BLE001 - 회사 단위로 격리
+            except Exception as e:  # noqa: BLE001
                 log_etl("FAIL-Extract", "%s[%s] (token=%s) 실패: %s" % (c["name"], country, token, e))
         if n is not None:
             ok_tokens.append(token)
@@ -160,7 +145,6 @@ def extract(force=False):
             by_country_jobs[country] += n
             by_country_cos[country] += 1
 
-    # 국가별 크롤링 규모 요약
     breakdown = " · ".join("%s %d개사 %d건" % (ctry, by_country_cos[ctry], by_country_jobs[ctry])
                            for ctry in sorted(by_country_jobs))
     log_etl("STATS-Extract", "국가별 수집: %s" % (breakdown or "없음"))

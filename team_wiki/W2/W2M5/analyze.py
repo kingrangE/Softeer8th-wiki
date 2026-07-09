@@ -1,18 +1,7 @@
-"""
-캐시된 채용 공고를 읽고 DE 기술 언급을 집계 + SQLite 적재
+"""캐시된 채용 공고를 읽어 DE 기술 언급을 집계하고 SQLite에 적재한다.
 
-Transform:
-  1) 기술/엔지니어링 직무 필터링
-  2) 직무 본문 정제 / 기술 토큰 매칭
-     - 한 공고에서 같은 기술은 1회만 카운트
-  3) first_published → 분기 버킷
-
-Load:
-  - jobs(company, country, segment, token, job_id, title, quarter, category, is_tech_role)
-  - mentions(company, country, segment, token, quarter, category, tech)   # 1행 = (공고,기술)
-  - granular_mentions(company, country, segment, token, quarter, category, product)
-  세 테이블을 data/radar.db(SQLite)에 기록.
-  (category = 직무 분류: 데이터 엔지니어링/ML,AI/데이터 분석/백엔드/프론트엔드/DevOps,인프라/모바일/기타 기술직/비기술직)
+Transform: 기술직 필터 → 본문 정제/기술 토큰 매칭(공고당 기술 1회) → 분기 버킷.
+Load: jobs / mentions / granular_mentions 세 테이블을 data/radar.db에 기록.
 """
 
 import csv
@@ -28,7 +17,6 @@ from bs4 import BeautifulSoup
 from de_lexicon import techs_in_text, granular_products_in_text, job_category
 from radar_util import DB_PATH, RAW_DIR, SEED_CSV, ensure_dirs, log_etl
 
-# 기술/엔지니어링 직무로 볼 제목 키워드(소문자 부분일치). 비기술직 제외용.
 TECH_ROLE_KEYWORDS = [
     "data engineer", "analytics engineer", "data platform", "data infrastructure",
     "data infra", "dataops", "machine learning", "ml engineer", "ml platform",
@@ -66,7 +54,7 @@ def read_seed(path=SEED_CSV):
 
 
 def transform():
-    """캐시를 읽어 jobs / mentions(기술) / granular(세분제품) DataFrame 세 개로 반환."""
+    """캐시를 읽어 jobs / mentions / granular DataFrame 세 개로 반환."""
     log_etl("START-Transform", "직무 필터 + 기술어휘/세분제품 매칭 시작")
     job_rows, mention_rows, granular_rows = [], [], []
     for c in read_seed():
@@ -79,7 +67,6 @@ def transform():
             title = j.get("title", "").strip()
             tech_role = is_tech_role(title)
             q = quarter_of(j.get("first_published"))
-            # 직무(job function) 분류: 기술직이면 세부 직무(없으면 '기타 기술직'), 아니면 '비기술직'
             cat = (job_category(title) or "기타 기술직") if tech_role else "비기술직"
             job_rows.append(dict(company=c["name"], country=c["country"],
                                  segment=c["segment"], token=token,
@@ -92,7 +79,7 @@ def transform():
                         token=token, quarter=q, category=cat)
             for tech in techs_in_text(text):
                 mention_rows.append(dict(meta, tech=tech))
-            for product in granular_products_in_text(text):   # 세분 제품 티어
+            for product in granular_products_in_text(text):
                 granular_rows.append(dict(meta, product=product))
 
     jobs_df = pd.DataFrame(job_rows)
@@ -105,7 +92,6 @@ def transform():
 
 
 def load(jobs_df, mentions_df, granular_df, db=DB_PATH):
-    """세 DataFrame 을 SQLite 에 기록(W1 스타일)."""
     ensure_dirs()
     log_etl("START-Load", "SQLite 적재 시작 → %s" % os.path.basename(db))
     con = sqlite3.connect(db)
@@ -119,7 +105,7 @@ def load(jobs_df, mentions_df, granular_df, db=DB_PATH):
 
 
 def crawl_summary(db=DB_PATH):
-    """국가별 크롤링/처리 규모 요약(회사수·원본공고·기술직공고·기술언급·세분제품언급)."""
+    """국가별 규모 요약(회사수·원본공고·기술직공고·기술언급·세분제품언급)."""
     con = sqlite3.connect(db)
     jobs = pd.read_sql("SELECT * FROM jobs", con)
     men = pd.read_sql("SELECT country, COUNT(*) n FROM mentions GROUP BY country", con)
