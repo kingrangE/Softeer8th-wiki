@@ -955,16 +955,26 @@ cd wiki/W5/study/0727/code
 docker compose exec -T spark-master spark-submit \
   --master spark://spark-master:7077 --deploy-mode client \
   /opt/spark-apps/03_shuffle_join.py /opt/spark-data \
-  | tee /tmp/shuffle_join_cluster.log
+  2>&1 | tee /tmp/shuffle_join_cluster.log
 ```
 Expected: exit code 0
 
+(`2>&1`이 반드시 필요하다 — Spark의 log4j 출력(block manager 등록 로그 포함)은 stderr로 나가므로 이게 없으면 로그 파일에 아무 것도 안 잡힌다.)
+
 - [ ] **Step 2: 두 Executor 모두 참여했는지 검증**
 
-Run:
+Spark는 block manager 등록 로그를 Worker의 Spark 호스트명이 아니라 **컨테이너 IP**로 남긴다 (`Registering block manager spark-worker-1:...`처럼 찍히지 않는다). 먼저 각 워커의 IP를 확인한다:
+
 ```bash
-grep -c "Registering block manager spark-worker-1" /tmp/shuffle_join_cluster.log
-grep -c "Registering block manager spark-worker-2" /tmp/shuffle_join_cluster.log
+docker compose exec -T spark-worker-1 hostname -i
+docker compose exec -T spark-worker-2 hostname -i
+```
+
+그 다음 각 IP로 grep한다 (IP는 컨테이너를 새로 띄울 때마다 달라질 수 있으므로 매번 위 명령으로 다시 확인한다):
+
+```bash
+grep -c "Registering block manager <spark-worker-1의 IP>" /tmp/shuffle_join_cluster.log
+grep -c "Registering block manager <spark-worker-2의 IP>" /tmp/shuffle_join_cluster.log
 grep -c "user rows: 5000" /tmp/shuffle_join_cluster.log
 ```
 Expected: 세 명령 모두 `1` 이상 (두 워커 컨테이너 모두 block manager를 등록했고, Job이 정상 완료됨)
@@ -1014,9 +1024,9 @@ Expected: 세 컨테이너 모두 정상 종료
 ## 확인 방법
 
 1. `docker compose up -d --wait`로 클러스터를 띄운다.
-2. `docker compose exec spark-master spark-submit --master spark://spark-master:7077 --deploy-mode client /opt/spark-apps/03_shuffle_join.py /opt/spark-data`를 실행한다.
-3. 실행 로그에서 `Registering block manager spark-worker-1:...`, `Registering block manager spark-worker-2:...` 두 줄이 각각 다른 컨테이너에서 온 것을 확인한다 — Executor가 진짜 별도 프로세스라는 증거다.
-4. Master UI(`http://localhost:8080`)에서 Worker 2개가 등록된 것을, 실행 중이라면 App UI(`http://localhost:4040`)의 Executors 탭에서 executor 2개를 확인한다.
+2. `docker compose exec -T spark-master spark-submit --master spark://spark-master:7077 --deploy-mode client /opt/spark-apps/03_shuffle_join.py /opt/spark-data 2>&1 | tee /tmp/shuffle_join_cluster.log`를 실행한다.
+3. 실행 로그에서 `Registering block manager <IP>:...` 줄이 두 개(각 워커 하나씩) 나오는 것을 확인한다 — Executor가 진짜 별도 프로세스라는 증거다. 흥미로운 점: Spark는 이 등록 로그를 `spark-worker-1`처럼 Spark가 인식하는 호스트명이 아니라 **컨테이너의 실제 IP**로 남긴다. `docker compose exec -T spark-worker-1 hostname -i`, `docker compose exec -T spark-worker-2 hostname -i`로 각 컨테이너의 IP를 확인하면 로그의 어느 줄이 어느 워커인지 알 수 있다.
+4. Master UI(`http://localhost:8080`)에서 Worker 2개가 등록된 것을, 실행 중이라면 App UI(`http://localhost:4040`)의 Executors 탭에서 executor 2개를 확인한다 (이쪽은 IP가 아니라 Worker ID/호스트 정보로 보기 편하게 표시된다).
 ```
 
 - [ ] **Step 2: 필수 키워드 존재 검증**
