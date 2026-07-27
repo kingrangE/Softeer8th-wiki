@@ -547,7 +547,9 @@ Expected: exit code 0
 
 - [ ] **Step 3: 두 번의 count 결과가 동일한지 검증**
 
-Run: `grep -o 'count=[0-9]*' exercises/02_lazy_eval.ipynb | sort -u | wc -l`
+Run: `grep -o 'count=[0-9]\+' exercises/02_lazy_eval.ipynb | sort -u | wc -l`
+
+(`+`가 아니라 `*`를 쓰면 f-string 소스 코드의 `count={first_count}` 템플릿도 0개 숫자로 매칭되어 오탐이 발생한다.)
 Expected: `1` (두 count 값이 같으므로 중복 제거 후 1개)
 
 - [ ] **Step 4: Commit**
