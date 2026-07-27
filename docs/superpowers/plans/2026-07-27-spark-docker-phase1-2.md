@@ -923,7 +923,9 @@ Expected: exit code 0, 세 서비스 모두 기동 (healthcheck 통과까지 대
 
 - [ ] **Step 3: Worker 등록 검증**
 
-Run: `curl -s http://localhost:8080/json/ | grep -o '"status" : "ALIVE"' | wc -l`
+Run: `curl -s http://localhost:8080/json/ | grep -o '"state" : "ALIVE"' | wc -l`
+
+(Spark 3.5.4의 master JSON API는 마스터 자신의 상태만 `"status"` 필드로 표기하고, 각 worker의 생사 여부는 `"state"` 필드로 표기한다. `"status"`로 grep하면 worker 개수와 무관하게 항상 1만 나온다.)
 Expected: `2`
 
 - [ ] **Step 4: Commit**
